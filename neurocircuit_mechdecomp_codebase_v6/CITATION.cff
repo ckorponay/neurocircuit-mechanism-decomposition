@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "Neurocircuit Mechanism Decomposition (Transformer–SSM)"
+authors:
+  - family-names: "Korponay"
+    given-names: "Cole"
+version: "0.1.0"
+date-released: "2026-01-15"
+url: "https://github.com/<your-username>/neurocircuit-mechanism-decomposition"
+license: "MIT"

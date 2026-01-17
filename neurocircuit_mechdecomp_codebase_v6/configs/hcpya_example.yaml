@@ -1,0 +1,16 @@
+seed: 0
+
+data:
+  dataset: "HCP-YA"
+  n_timepoints: 253
+  tr_seconds: 0.72
+
+model:
+  n_regions: 170
+  d_model: 128
+  n_lags: 13
+
+training:
+  batch_size: 2
+  steps: 25
+  lr: 1.0e-4

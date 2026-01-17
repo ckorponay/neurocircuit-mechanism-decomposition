@@ -1,0 +1,16 @@
+name: neurocircuit-mechdecomp
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - nibabel
+  - scikit-learn
+  - pyyaml
+  - tqdm
+  - pip:
+      - torch>=2.2
+      - einops>=0.7
