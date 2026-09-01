@@ -1,0 +1,45 @@
+seed: 0
+
+data:
+  dataset: "HCP-PDC"
+  tr_seconds: 0.8
+  n_timepoints: 501
+
+model:
+  n_regions: 170
+  d_model: 128
+  attention_mode: "edge_conditioned_sparse"
+  lag_interaction_dim: 16
+  lag_embedding_mode: "seconds"
+  max_lag_seconds: 12.0
+  legacy_oldest_first: false
+  ssm_parameterization: "continuous"
+  continuous_stability_mode: "diagonal_dominant"
+  discretization_method: "solve"
+  ssm_initial_state: "first_observation"
+  return_full_pi_by_default: false
+
+training:
+  batch_size: 4
+  steps: 25
+  lr: 1.0e-4
+
+hemodynamics:
+  hrf_source: "rshrf_external_fixed"
+  hrf_parameterization: "unit_l1_shape_plus_fixed_gain"
+  systemic_source: "rapidtide_external_fixed"
+  hrf_trainable: false
+  vascular_timing_trainable: false
+  state_inference: "map_alternating"
+  outer_steps: 3
+  map_steps_first: 250
+  map_steps_refine: 100
+  map_lr: 0.05
+  observation_weight: 1.0
+  dynamics_weight: 0.02
+  use_rshrf_wiener_only_as_warm_start: true
+
+clinical_application:
+  freeze_model_before_outcome_testing: true
+  infer_each_run_separately: true
+  aggregate_within_visit: true

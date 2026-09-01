@@ -1,0 +1,6 @@
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
+WORKDIR /opt/nmd
+COPY . /opt/nmd
+RUN pip install --no-cache-dir einops pyyaml numpy pytest
+ENV PYTHONPATH=/opt/nmd/neurocircuit_mechdecomp_codebase_v6
+CMD ["python", "-m", "pytest", "-q", "neurocircuit_mechdecomp_codebase_v6/tests"]
