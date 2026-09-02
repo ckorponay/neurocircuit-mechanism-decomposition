@@ -1,57 +1,158 @@
 # HCP-YA hemodynamic adapter: RAPIDTIDE + rsHRF -> NMD
 
-The model expects all quantities in the **same fixed ROI identity/order** as the neural input.
+The model expects all quantities in the **same fixed ROI identity/order** as the neural input. Production preprocessing is implemented in:
+
+```text
+neurocircuit/scripts/prepare_hemodynamics.py
+```
+
+## Recommended HCP order
+
+RAPIDTIDE's current documentation specifically notes an HCP/FIX special case: estimate the systemic regressor and voxel delays from the **minimally processed** BOLD, then use `--denoisesourcefile` to apply the final sLFO regression to the **FIX-denoised** BOLD. This lets the systemic estimation see signal that FIX can attenuate while producing an rsHRF input on top of the conventional HCP FIX processing.
+
+Conceptually:
+
+```text
+HCP minimally processed volumetric BOLD
+            |
+            +---- RAPIDTIDE: estimate s(t), delta(x)
+            |
+HCP FIX BOLD +---- final RAPIDTIDE regression
+            |
+            +---- cleaned BOLD -> fixed ROI reduction -> rsHRF
+
+original FIX ROI BOLD + fixed RAPIDTIDE + fixed rsHRF
+            |
+            +---- NMD measurement-aware latent-state inference
+```
+
+The RAPIDTIDE-cleaned 4-D BOLD is **not** the primary NMD observed signal. It is an intermediate used to estimate rsHRF and an ablation/benchmark. It can be deleted after the derived HRF and compact ROI-level products have been validated.
+
+## One-command RAPIDTIDE + reduction stage
+
+Example for one HCP-YA run:
+
+```tcsh
+python -m neurocircuit.scripts.prepare_hemodynamics \
+  --rapidtide-source /path/to/minimally_processed_bold.nii.gz \
+  --denoise-source /path/to/FIX_bold.nii.gz \
+  --rapidtide-prefix /path/to/derivatives/rapidtide/100307_REST1_LR \
+  --atlas /path/to/fixed_nmd_label_atlas.nii.gz \
+  --roi-map /path/to/nmd_roi_labels.tsv \
+  --roi-schema /path/to/nmd_roi_ids.txt \
+  --tr-seconds 0.72 \
+  --out-dir /path/to/derivatives/nmd_hemodynamics/100307_REST1_LR \
+  --run-rapidtide \
+  --filterband lfo \
+  --searchrange -7.5 15 \
+  --ampthresh 0.15 \
+  --spatialfilt 3 \
+  --despecklepasses 4 \
+  --passes 3 \
+  --nprocs 2
+```
+
+The wrapper calls RAPIDTIDE with `--denoising`, discovers the BIDS-style outputs, and writes:
+
+```text
+systemic_waveform.npy                 [T]
+vascular_delay_seconds.npy            [R]
+vascular_amplitude.npy                [R]
+rapidtide_r2.npy                       [R]  # if lfofilterR exists
+rshrf_input_cleaned_roi_TxR.npy       [T,R]
+rshrf_input_cleaned_roi_TxR.tsv       [T,R]
+hemodynamics_provenance.json
+```
+
+It also records the exact RAPIDTIDE command and all source/output paths in the provenance JSON.
 
 ## RAPIDTIDE fields
 
-For each resting run, preferred RAPIDTIDE sources are:
+Current RAPIDTIDE sources used are:
 
-- systemic waveform: final/refined moving regressor at the fMRI sampling grid;
-- vascular delay: refined maximum-time/delay map, in seconds;
-- vascular amplitude: sLFO regression fit coefficient map (`lfofilterCoeff`), not correlation strength;
-- optional vascular QC/phenotype: `lfofilterR2` map.
+- systemic waveform: `*_desc-refinedmovingregressor_timeseries.tsv[.gz]`;
+- vascular delay: `*_desc-maxtimerefined_map.nii[.gz]`, in seconds;
+- vascular amplitude: `*_desc-lfofilterCoeff_map.nii[.gz]`;
+- fit R²: `*_desc-lfofilterR2_map.nii[.gz]`;
+- fit correlation (fallback/QC): `*_desc-lfofilterR_map.nii[.gz]`;
+- temporary cleaned signal for rsHRF: `*_desc-lfofilterCleaned_bold.nii[.gz]`.
 
-Reduce the voxelwise delay/coefficient/R2 maps into the exact same fixed ROIs used by NMD. For delay, an R2-weighted robust ROI mean/median is a useful sensitivity analysis, but keep a plain unweighted summary too so the weighting choice is auditable.
+NMD stores `rapidtide_r2` from RAPIDTIDE's documented voxelwise `lfofilterR2` map. If that map is absent in an older run, the adapter falls back to squaring the voxelwise `lfofilterR` map before ROI reduction. Do **not** use `maxcorr` as the observation-model amplitude. `lfofilterCoeff` is the fitted regression coefficient and corresponds to the alpha term in the generative model.
 
-Do **not** use `maxcorr` as alpha in the generative equation: it is a correlation strength, whereas the observation model's alpha is a regression amplitude. `lfofilterCoeff` corresponds more directly to that role.
+Default ROI reductions are:
 
-## rsHRF fields
+- delay: median;
+- fit coefficient: median;
+- fit R²: median of voxelwise `lfofilterR2`;
+- cleaned BOLD: voxel mean per ROI.
 
-Run rsHRF on the ROI-level signal after removing/conditioning on the systemic component. Export one HRF kernel per fixed ROI in model ROI order.
+A sensitivity option is available for R2-weighted mean delay:
 
-The NMD loader automatically separates each raw HRF into:
+```tcsh
+--delay-summary r2_weighted_mean
+```
 
-- unit-L1 HRF shape,
-- `hrf_gain`.
+but the plain median is the production default so the vascular-delay phenotype is not circularly dominated by fit strength.
 
-Use rsHRF's Wiener-deconvolved series only as an optional MAP warm start.
+## Fixed ROI definition
 
-## Assemble one run
+`--roi-map` must contain the integer atlas value for every NMD ROI, in exactly the same order as `--roi-schema`:
 
-After ROI reduction, create arrays:
+```text
+roi_id  label
+C_0     1
+C_1     2
+...
+S_0     101
+```
 
-    hrf.npy                  [R,K]
-    systemic.tsv             [T]
-    vascular_delay.npy       [R]
-    vascular_coeff.npy       [R]
-    rapidtide_r2.npy         [R]  # optional
+The wrapper refuses to silently reorder the mapping. It also checks spatial dimensions and NIfTI affines before reduction. Empty ROIs cause a hard failure.
 
-Then:
+The demo HCP converter in the original repository can refit KMeans supervoxels independently per run. Do **not** use that behavior for cross-subject mechanistic training. Use a fixed atlas or a once-fit/frozen reference parcellation.
 
-    python -m neurocircuit.scripts.build_hemodynamics_npz \
-      --hrf-kernel hrf.npy \
-      --systemic-waveform systemic.tsv \
-      --vascular-delay vascular_delay.npy \
-      --vascular-amplitude vascular_coeff.npy \
-      --rapidtide-r2 rapidtide_r2.npy \
-      --out sub-100307_REST1_LR_hemodynamics.npz
+## rsHRF bridge
 
-Validate:
+rsHRF accepts image data or observation-by-voxel matrices. The wrapper therefore exports the RAPIDTIDE-cleaned fixed-ROI matrix as `[T,R]`. Run rsHRF on that matrix using the selected reproducible rsHRF workflow and export the resulting HRF kernels as `[R,K]` (or `[K,R]`; the wrapper detects/transposes the latter).
 
-    python -m neurocircuit.scripts.validate_hemodynamics_npz \
-      sub-100307_REST1_LR_hemodynamics.npz \
-      --n-regions R --n-timepoints T
+Then rerun `prepare_hemodynamics` **without** `--run-rapidtide`, adding:
 
-## Critical ROI note
+```tcsh
+--hrf-kernel /path/to/rshrf_hrf.npy
+```
 
-The demo HCP converter in the original repository can refit KMeans supervoxels independently per run. Do not use that behavior for cross-subject mechanistic training. Use fixed atlas ROIs or a once-fit/frozen reference parcellation so that every hemodynamic array and every neural array has identical node meaning.
+The final output is:
+
+```text
+hemodynamics.npz
+```
+
+with:
+
+```text
+hrf_kernel                 [R,K]  unit-L1 HRF shape
+hrf_gain                   [R]    separated HRF magnitude
+systemic_waveform          [T]
+vascular_delay_seconds     [R]
+vascular_amplitude         [R]
+rapidtide_r2               [R]    optional
+roi_ids                    [R]
+roi_schema_hash            scalar
+tr_seconds                 scalar
+```
+
+An optional `--rshrf-command-template` hook is provided for a site-specific/containerized rsHRF invocation, with placeholders `{input}`, `{out_dir}`, `{tr}`, and `{roi_schema}`. We intentionally do not hard-code an rsHRF package-internal API because the maintained rsHRF project currently exposes a BIDS-App workflow and its implementation interface may evolve.
+
+## Storage policy
+
+Keep permanently:
+
+- the original/preprocessed source BOLD in the source dataset;
+- RAPIDTIDE refined systemic regressor;
+- delay map;
+- coefficient map;
+- fit-correlation map;
+- run options/command/provenance;
+- ROI-reduced hemodynamics products;
+- rsHRF kernels.
+
+Keep the full RAPIDTIDE cleaned 4-D BOLD only while estimating/validating rsHRF or while running the cleaned-BOLD ablation. It is not required by NMD training after the compact derived products are generated.

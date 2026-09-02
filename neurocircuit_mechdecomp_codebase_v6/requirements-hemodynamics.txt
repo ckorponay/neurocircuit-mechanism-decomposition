@@ -1,0 +1,4 @@
+-r requirements.txt
+nibabel>=5.2,<6
+rapidtide==3.2.0
+rshrf==1.7.0
