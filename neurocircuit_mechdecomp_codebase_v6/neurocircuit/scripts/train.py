@@ -29,6 +29,8 @@ def build_model(cfg: dict) -> NeurocircuitMechDecomp:
         ssm_initial_state=m.get("ssm_initial_state", "first_observation"),
         continuous_stability_mode=m.get("continuous_stability_mode", "projected"),
         discretization_method=m.get("discretization_method", "solve"),
+        n_cortical_regions=int(m.get("n_cortical_regions", 0)),
+        cortical_low_rank_rank=int(m.get("cortical_low_rank_rank", 0)),
     )
 
 
@@ -67,7 +69,8 @@ def main() -> None:
         default=None,
         help="NPZ containing x_hat [N,R,T]. If omitted, runs a synthetic smoke test only.",
     )
-    ap.add_argument("--anat-mask", default=None, help="Optional .npy [R_src,R_tgt] anatomical mask")
+    ap.add_argument("--anat-mask", default=None, help="Routing mask .npy [R_src,R_tgt] for Transformer drive")
+    ap.add_argument("--dynamics-mask", default=None, help="Optional broader .npy [R_src,R_tgt] mask for SSM A; defaults to --anat-mask")
     ap.add_argument("--checkpoint-out", default=None)
     args = ap.parse_args()
 
@@ -80,6 +83,10 @@ def main() -> None:
     tr_seconds = float(cfg["data"]["tr_seconds"])
     max_lag_seconds = float(cfg["model"].get("max_lag_seconds", 12.0))
     anat_mask = _load_anat_mask(args.anat_mask, R, device)
+    dynamics_mask = (
+        anat_mask if args.dynamics_mask is None
+        else _load_anat_mask(args.dynamics_mask, R, device)
+    )
 
     if args.latent_npz is None:
         B = int(cfg.get("training", {}).get("batch_size", 2))
@@ -107,6 +114,7 @@ def main() -> None:
             anat_mask,
             tr_seconds=tr_seconds,
             max_lag_seconds=max_lag_seconds,
+            dynamics_mask=dynamics_mask,
             return_details=True,
         )
         loss = dyn_loss

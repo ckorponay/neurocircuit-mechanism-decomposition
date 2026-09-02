@@ -6,7 +6,9 @@ data:
   n_timepoints: 300
 
 model:
-  n_regions: 170
+  n_regions: 164
+  n_cortical_regions: 100
+  cortical_low_rank_rank: 8
   d_model: 128
   attention_mode: "edge_conditioned_sparse"
   lag_interaction_dim: 16
@@ -45,3 +47,11 @@ clinical_application:
   aggregate_within_visit: true
   allow_temporal_upsampling: false
   require_hcp_temporal_resolution_stress_test: true
+
+
+atlas:
+  name: "cbgtc_v1"
+  n_regions: 164
+  roi_schema: "atlases/cbgtc_v1/cbgtc_v1_roi_ids.txt"
+  routing_mask: "atlases/cbgtc_v1/cbgtc_v1_routing_core.npy"
+  dynamics_mask: "atlases/cbgtc_v1/cbgtc_v1_dynamics_core.npy"

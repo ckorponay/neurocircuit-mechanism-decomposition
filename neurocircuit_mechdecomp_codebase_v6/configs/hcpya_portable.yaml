@@ -6,7 +6,9 @@ data:
   tr_seconds: 0.72
 
 model:
-  n_regions: 170
+  n_regions: 164
+  n_cortical_regions: 100
+  cortical_low_rank_rank: 8
   d_model: 128
   attention_mode: "edge_conditioned_sparse"
   lag_interaction_dim: 16
@@ -40,3 +42,10 @@ hemodynamics:
   observation_weight: 1.0
   dynamics_weight: 0.02
   use_rshrf_wiener_only_as_warm_start: true
+
+atlas:
+  name: "cbgtc_v1"
+  n_regions: 164
+  roi_schema: "atlases/cbgtc_v1/cbgtc_v1_roi_ids.txt"
+  routing_mask: "atlases/cbgtc_v1/cbgtc_v1_routing_core.npy"
+  dynamics_mask: "atlases/cbgtc_v1/cbgtc_v1_dynamics_core.npy"

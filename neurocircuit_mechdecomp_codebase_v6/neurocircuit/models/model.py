@@ -31,6 +31,8 @@ class NeurocircuitMechDecomp(nn.Module):
         ssm_initial_state: str = "first_observation",
         continuous_stability_mode: str = "projected",
         discretization_method: str = "solve",
+        n_cortical_regions: int = 0,
+        cortical_low_rank_rank: int = 0,
         include_systemic_observation: bool = True,
     ):
         super().__init__()
@@ -40,6 +42,8 @@ class NeurocircuitMechDecomp(nn.Module):
             initial_state=ssm_initial_state,
             continuous_stability_mode=continuous_stability_mode,
             discretization_method=discretization_method,
+            n_cortical_regions=n_cortical_regions,
+            cortical_low_rank_rank=cortical_low_rank_rank,
         )
         self.transformer = TransformerPropagationHead(
             d_model=d_model,

@@ -7,7 +7,7 @@ import hashlib
 import numpy as np
 
 
-DEFAULT_GROUP_ORDER = ("C", "S", "Th", "A", "H", "GPe", "GPi", "STN", "MB")
+DEFAULT_GROUP_ORDER = ("C", "S", "Th", "A", "H", "GPe", "GPi", "VeP", "STN", "SNc", "SNr", "VTA", "MB")
 
 
 def roi_schema_hash(roi_ids: Sequence[str]) -> str:

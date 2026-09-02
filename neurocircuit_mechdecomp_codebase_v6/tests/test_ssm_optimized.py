@@ -28,3 +28,43 @@ def test_fast_and_augmented_discretization_agree():
     a2, b2 = exact_zoh_discretize(A, B, 0.8, method="augmented")
     assert torch.allclose(a1, a2, atol=1e-10, rtol=1e-10)
     assert torch.allclose(b1, b2, atol=1e-10, rtol=1e-10)
+
+
+def test_low_rank_cortical_dynamics_cross_sparse_mask_and_remain_stable():
+    R = 8
+    nc = 4
+    ssm = LinearSSM(
+        R,
+        parameterization="continuous",
+        continuous_stability_mode="diagonal_dominant",
+        n_cortical_regions=nc,
+        cortical_low_rank_rank=2,
+    )
+    # No explicit C->C mask edges: low-rank cortical background should still
+    # contribute off-diagonal cortex-cortex dynamics.
+    mask = torch.zeros(R, R, dtype=torch.bool)
+    A = ssm.effective_A_continuous(mask)
+    c = A[:nc, :nc].clone()
+    c.fill_diagonal_(0)
+    assert torch.count_nonzero(c).item() > 0
+    # It must not leak into noncortical blocks.
+    assert torch.count_nonzero(A[:nc, nc:]).item() == 0
+    assert torch.count_nonzero(A[nc:, :nc]).item() == 0
+    assert torch.linalg.eigvals(A).real.max().item() < 0
+
+
+def test_low_rank_cortical_dynamics_receive_gradients():
+    ssm = LinearSSM(
+        6,
+        parameterization="continuous",
+        continuous_stability_mode="diagonal_dominant",
+        n_cortical_regions=4,
+        cortical_low_rank_rank=2,
+    )
+    A = ssm.effective_A_continuous(torch.zeros(6, 6, dtype=torch.bool))
+    loss = A[:4, :4].pow(2).sum()
+    loss.backward()
+    assert ssm.cortical_U.grad is not None
+    assert ssm.cortical_V.grad is not None
+    assert ssm.cortical_U.grad.abs().sum().item() > 0
+    assert ssm.cortical_V.grad.abs().sum().item() > 0

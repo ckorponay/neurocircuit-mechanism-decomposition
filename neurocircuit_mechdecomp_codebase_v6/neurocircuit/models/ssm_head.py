@@ -66,6 +66,8 @@ class LinearSSM(nn.Module):
         continuous_stability_margin: float = 1e-3,
         continuous_stability_mode: str = "projected",
         discretization_method: str = "solve",
+        n_cortical_regions: int = 0,
+        cortical_low_rank_rank: int = 0,
     ):
         super().__init__()
         if parameterization not in {"discrete", "continuous"}:
@@ -81,6 +83,19 @@ class LinearSSM(nn.Module):
         self.continuous_stability_margin = float(continuous_stability_margin)
         self.continuous_stability_mode = continuous_stability_mode
         self.discretization_method = discretization_method
+        self.n_cortical_regions = int(n_cortical_regions)
+        self.cortical_low_rank_rank = int(cortical_low_rank_rank)
+        if self.n_cortical_regions < 0 or self.n_cortical_regions > self.n:
+            raise ValueError("n_cortical_regions must be in [0,n_regions]")
+        if self.cortical_low_rank_rank < 0:
+            raise ValueError("cortical_low_rank_rank must be >= 0")
+        if self.cortical_low_rank_rank and (
+            parameterization != "continuous" or continuous_stability_mode != "diagonal_dominant"
+        ):
+            raise ValueError(
+                "cortical low-rank dynamics are supported in the recommended "
+                "continuous + diagonal_dominant SSM mode"
+            )
 
         if parameterization == "discrete":
             self.A = nn.Parameter(0.01 * torch.randn(n_regions, n_regions))
@@ -100,6 +115,15 @@ class LinearSSM(nn.Module):
             self.decay_raw = nn.Parameter(torch.full((n_regions,), -1.5))
             self.register_parameter("A", None)
             self.register_parameter("A_c", None)
+
+        if self.cortical_low_rank_rank > 0:
+            nc = self.n_cortical_regions
+            rc = self.cortical_low_rank_rank
+            self.cortical_U = nn.Parameter(0.005 * torch.randn(nc, rc))
+            self.cortical_V = nn.Parameter(0.005 * torch.randn(nc, rc))
+        else:
+            self.register_parameter("cortical_U", None)
+            self.register_parameter("cortical_V", None)
 
         self.U = nn.Parameter(0.01 * torch.randn(n_regions, rank_B))
         self.V = nn.Parameter(0.01 * torch.randn(n_regions, rank_B))
@@ -140,12 +164,36 @@ class LinearSSM(nn.Module):
         if m is not None:
             off = off * (m & ~eye_bool).to(off.dtype)
 
+        # Distributed cortex->cortex background dynamics are represented by a
+        # low-rank block rather than 9,900 independently estimated edges. This
+        # term is deliberately separate from the sparse anatomical mask and
+        # from Transformer routing.
+        if self.cortical_low_rank_rank > 0:
+            nc = self.n_cortical_regions
+            cblock = self.cortical_U @ self.cortical_V.T
+            ceye = torch.eye(nc, device=raw.device, dtype=torch.bool)
+            cblock = cblock.masked_fill(ceye, 0.0)
+            off = off.clone()
+            off[:nc, :nc] = off[:nc, :nc] + cblock
+
         # Strict row diagonal dominance with negative diagonal guarantees all
-        # Gershgorin discs lie in the open left half-plane.
+        # Gershgorin discs lie in the open left half-plane, including the
+        # low-rank cortical contribution.
         row_abs = off.abs().sum(dim=1)
         extra_decay = F.softplus(self.decay_raw) + self.continuous_stability_margin
         diag = -(row_abs + extra_decay)
         return off + torch.diag(diag)
+
+
+    def cortical_low_rank_matrix(self) -> torch.Tensor | None:
+        """Return the directed cortical background A block before diagonal stabilization."""
+        if self.cortical_low_rank_rank <= 0:
+            return None
+        block = self.cortical_U @ self.cortical_V.T
+        eye = torch.eye(
+            self.n_cortical_regions, device=block.device, dtype=torch.bool
+        )
+        return block.masked_fill(eye, 0.0)
 
     def stability_project_(self, rho_max: float = 0.98):
         """Legacy discrete projection only; portable stable-by-design mode needs none."""

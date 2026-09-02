@@ -1,0 +1,24 @@
+{
+  "name": "cbgtc_v1",
+  "n_regions": 164,
+  "n_cortical_regions": 100,
+  "cortex": "Schaefer2018 100 parcels, 7 networks",
+  "striatum": "Tian2020 Melbourne Subcortex Atlas, 3T Scale III (20 parcels; finest 3T striatal split)",
+  "thalamus": "Tian2020 3T Scale IV (16 parcels; finest 3T split)",
+  "amygdala": "Tian2020 3T Scale IV labels (4 parcels; no additional split beyond S3)",
+  "hippocampus": "Tian2020 3T Scale IV (10 parcels; finest 3T split)",
+  "cit168": "CIT168 v1.1; GPe/GPi/VeP/STN/SNc/SNr/VTA",
+  "primary_routing_graph": "core",
+  "primary_dynamics_graph": "core",
+  "recommended_cortical_low_rank_rank": 8,
+  "notes": [
+    "Node identity/order is fixed across datasets.",
+    "Tian pallidum is intentionally replaced by CIT168 mechanistic GPe/GPi/VeP identities.",
+    "Cortex, amygdala, hippocampus and thalamus may route to all striatal parcels in the primary graph; target topography is learned rather than hard-coded.",
+    "Cortex<->amygdala, cortex<->hippocampus, cortex<->thalamus and amygdala<->hippocampus are primary macro-circuit routes.",
+    "Thalamus->striatum, striatum->GPe/GPi/SNr/VeP and GPe->striatum are included in the core circuitry.",
+    "Generic cortex->cortex Transformer routing is excluded from the core graph and enabled only in the extended ablation.",
+    "Core SSM dynamics use sparse within-network C->C edges plus a separate low-rank global cortical dynamics term.",
+    "Self-routing is excluded from Transformer masks; SSM diagonal A models intrinsic persistence."
+  ]
+}
